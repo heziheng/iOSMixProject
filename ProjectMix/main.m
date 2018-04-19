@@ -30,7 +30,7 @@ void deleteComments(NSString *directory);
 void modifyProjectName(NSString *projectDir, NSString *oldName, NSString *newName);
 void modifyClassNamePrefix(NSMutableString *projectContent, NSString *sourceCodeDir, NSArray<NSString *> *ignoreDirNames, NSString *oldName, NSString *newName);
 void replaceFileContend(NSString *sourceCodeDir,NSString *oldClassName,NSString *newClassName);
-void creatApiToFile(NSString *sourceCodeDir,NSString *apiName, NSString *paramName,NSString *logName,NSString *filePath, BOOL isHfile);
+void creatApiToFile(NSString *sourceCodeDir,NSString *apiName, NSString *paramName,NSString *logName,NSString *filePath, BOOL isHfile,BOOL isMMfile);
 void deleteAllSpamCode(NSString *sourceCodeDir,NSString *prefix);
 void changePrefix(NSString *sourceCodeDir, NSArray<NSString *> *ignoreDirNames,NSString *oldName, NSString *newName);
 void writeToFile(NSString *apiName);
@@ -40,10 +40,12 @@ NSString *gOutParameterName = nil;
 NSString *gSourceCodeDir = nil;
 NSInteger kLocalImageIndex = 0;
 NSInteger kSpamCount = 0;//每四个垃圾方法加参数
-NSInteger kPercent = 101;//百分之多少概率加密就写多少
+NSInteger fun_probability = 1;//每多少个原函数数量，就生成多少垃圾代码
+NSInteger kPercent = 80;//百分之多少概率加密就写多少
 NSInteger kImageCount = 0;
 NSInteger kfixImageCount = 0;
-
+static NSString * fun_header = @"yh_";//垃圾代码的前缀
+NSString *project_pbxprojPath = @"";//工程xcodeproj下pbxproj文件的路径
 #pragma mark - 公共方法
 
 static const NSString *kRandomAlphabet = @"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -188,6 +190,7 @@ int main(int argc, const char * argv[]) {
             if ([argument isEqualToString:@"-modifyClassNamePrefix"]) {
                 NSString *string = arguments[++i];
                 projectFilePath = [string stringByAppendingPathComponent:@"project.pbxproj"];
+                project_pbxprojPath = projectFilePath;
                 if (![fm fileExistsAtPath:string isDirectory:&isDirectory] || !isDirectory
                     || ![fm fileExistsAtPath:projectFilePath isDirectory:&isDirectory] || isDirectory) {
                     printf("修改类名前缀的工程文件参数错误。%s", string.UTF8String);
@@ -283,7 +286,7 @@ int main(int argc, const char * argv[]) {
         if (needModifyAPIName){
             printf("正在修改api名称\n");
              @autoreleasepool {
-                deleteAllSpamCode(gSourceCodeDir,@"sp_");
+                deleteAllSpamCode(gSourceCodeDir,@"");
              }
             printf("修改api名称完成\n");
         }
@@ -315,6 +318,19 @@ int main(int argc, const char * argv[]) {
                 modifyClassNamePrefix(projectContent, gSourceCodeDir, ignoreDirNames, oldClassNamePrefix, newClassNamePrefix);
                 
                 [projectContent writeToFile:projectFilePath atomically:YES encoding:NSUTF8StringEncoding error:nil];
+                
+            }
+            NSError *error  = nil;
+            NSString *str =  [[NSString alloc]initWithContentsOfFile:project_pbxprojPath encoding:NSUTF8StringEncoding error:&error];
+            if (error) {
+                NSLog(@"readfile failed");
+            }
+#warning 替换完成后工程可能打开会报错，需要替换字符串
+            str =  [str stringByReplacingOccurrencesOfString:@"ShareSDK+Extension" withString:@"ShareSDKExtension"];
+            str =  [str stringByReplacingOccurrencesOfString:@"ShareSDK+InterfaceAdapter" withString:@"ShareSDKInterfaceAdapter"];
+            [str writeToFile:project_pbxprojPath atomically:YES encoding:NSUTF8StringEncoding error:&error];
+            if (error) {
+                NSLog(@"error2");
             }
             printf("修改类名前缀完成\n");
         }
@@ -358,6 +374,7 @@ void recursiveDirectory(NSString *directory, NSArray<NSString *> *ignoreDirNames
             continue;
         }
         NSString *fileName = filePath.lastPathComponent;
+        NSLog(@"name----%@",fileName);
         if ([fileName hasSuffix:@".h"]) {
             fileName = [fileName stringByDeletingPathExtension];
             
@@ -405,7 +422,7 @@ static NSString *const kMClassFileTemplate = @"\
 @end\n";
 
 ///添加垃圾代码的策略
-///为每一个.m文件添加一个方法，
+///为每一个.mm文件添加一个方法，
 void addSpamCodeFile(NSString *sourceCodeDir){
     NSFileManager *fm = [NSFileManager defaultManager];
     NSArray<NSString *> *files = [fm contentsOfDirectoryAtPath:sourceCodeDir error:nil];
@@ -420,41 +437,55 @@ void addSpamCodeFile(NSString *sourceCodeDir){
         }
         NSString *fileName = filePath.lastPathComponent;
         ///mm文件先不管
+        NSLog(@"name---%@",fileName);
         if ([fileName hasSuffix:@".h"]) {
             NSString *hfileName = fileName.stringByDeletingPathExtension;
+            NSString *mmFileName = [hfileName stringByAppendingPathExtension:@"mm"];
             NSString *mFileName = [hfileName stringByAppendingPathExtension:@"m"];
-            if (![files containsObject:mFileName]) {
+            if (![files containsObject:mFileName] && ![files containsObject:mmFileName]) {
                 continue;
             }
-            
-            NSArray *apiList = @[@"sp_checkUserInfo",@"sp_upload",@"sp_getMediaData",@"sp_didGetInfoSuccess",@"sp_getUserFollowSuccess",@"sp_getLoginState",@"sp_checkNetWorking",@"sp_checkInfo",@"sp_getMediaFailed",@"sp_getUserName",@"sp_checkDefualtSetting",@"sp_didUserInfoFailed",@"sp_getUsersMostLiked",@"sp_getUsersMostLikedSuccess",@"sp_getUsersMostFollowerSuccess"];
-            NSArray *logList = @[@"Get Info Success",@"Get Info Failed",@"Continue",@"Check your Network",@"Get User Succrss"];
+            NSArray *apiList = @[@"checkUserInfo",@"upload",@"getMediaData",@"didGetInfoSuccess",@"getUserFollowSuccess",@"getLoginState",@"checkNetWorking",@"checkInfo",@"getMediaFailed",@"getUserName",@"checkDefualtSetting",@"didUserInfoFailed",@"getUsersMostLiked",@"getUsersMostLikedSuccess",@"getUsersMostFollowerSuccess"];
+            NSArray *logList = @[@"Get Information Success",@"Get Information Failed",@"Continue",@"Check your Input",@"Get UserID Success"];
             NSArray *param = @[@"string",@"mediaInfo",@"followCount",@"mediaCount",@"isLogin"];
-            int listIndex = arc4random() % 15;
-            int logIndex = arc4random() % 5;
-            
+            int listIndex = arc4random() % (apiList.count);
+            int logIndex = arc4random() % (logList.count);
+            int paramIndex = arc4random() % (param.count );
             ///概率修改
             NSInteger k = arc4random()%100;
             if(k>kPercent){
                 continue;
             }
-            creatApiToFile(sourceCodeDir, apiList[listIndex], param[logIndex], logList[logIndex], [sourceCodeDir stringByAppendingPathComponent:filePath], YES);
+            BOOL isMMfile = NO;
+            if ([files containsObject:mmFileName]) {
+                isMMfile = YES;
+            }
+            NSString *randomStr = @"abcdefghijklmnopqrstuvwxyz";
+            if ([fun_header isEqualToString:@"yh_"]) {
+                fun_header = @"";
+                for (int i = 0; i<3; i++) {
+                    fun_header = [fun_header stringByAppendingString:[randomStr substringWithRange:NSMakeRange(arc4random()%randomStr.length, 1)]];
+                }
+                fun_header = [fun_header stringByAppendingString:@"_"];
+            }
+            NSString *api = [NSString stringWithFormat:@"%@%@",fun_header,apiList[listIndex]];
+            creatApiToFile(sourceCodeDir, api, param[paramIndex], logList[logIndex], [sourceCodeDir stringByAppendingPathComponent:filePath], YES,isMMfile);
             
-            creatApiToFile(sourceCodeDir, apiList[listIndex], param[logIndex], logList[logIndex], filePath, NO);
+            creatApiToFile(sourceCodeDir, api, param[paramIndex], logList[logIndex], filePath, NO,isMMfile);
             kSpamCount += 1;
             
         }
     }
 }
 
-void creatApiToFile(NSString *sourceCodeDir,NSString *apiName, NSString *paramName,NSString *logName,NSString *filePath, BOOL isHfile){
+void creatApiToFile(NSString *sourceCodeDir,NSString *apiName, NSString *paramName,NSString *logName,NSString *filePath, BOOL isHfile,BOOL isMMfile){
     if(isHfile){
         NSError *error = nil;
         NSMutableString *fileContent = [NSMutableString stringWithContentsOfFile:filePath encoding:NSUTF8StringEncoding error:&error];
         if([fileContent containsString:[NSString stringWithFormat:@"- (void)%@:(NSString *)%@;\n", apiName,paramName]]){
             return;
         }
-        if(kSpamCount%4 == 0){
+        if(kSpamCount%fun_probability == 0){
             NSString *s = @"@end";
             NSArray *endArray = [fileContent componentsSeparatedByString:s];
             NSMutableArray *arrayOfLocation=[NSMutableArray new];
@@ -498,7 +529,7 @@ void creatApiToFile(NSString *sourceCodeDir,NSString *apiName, NSString *paramNa
     }
     else{
         NSString *sfileName = filePath.lastPathComponent.stringByDeletingPathExtension;
-        NSString *mFileName = [sfileName stringByAppendingPathExtension:@"m"];
+        NSString *mFileName = [sfileName stringByAppendingPathExtension:@"mm"];
         NSString *mfilePath = [sourceCodeDir stringByAppendingPathComponent:mFileName];
         NSError *merror = nil;
         NSMutableString *mfileContent = [NSMutableString stringWithContentsOfFile:mfilePath encoding:NSUTF8StringEncoding error:&merror];
@@ -849,6 +880,7 @@ void replacePodfileContent(NSString *filePath, NSString *oldString, NSString *ne
 }
 
 void replaceProjectFileContent(NSString *filePath, NSString *oldString, NSString *newString) {
+    
     NSMutableString *fileContent = [NSMutableString stringWithContentsOfFile:filePath encoding:NSUTF8StringEncoding error:nil];
     
     NSString *regularExpression = [NSString stringWithFormat:@"\\b%@\\b", oldString];
@@ -864,6 +896,7 @@ void replaceProjectFileContent(NSString *filePath, NSString *oldString, NSString
 void modifyFilesClassName(NSString *sourceCodeDir, NSString *oldClassName, NSString *newClassName);
 
 void modifyProjectName(NSString *projectDir, NSString *oldName, NSString *newName) {
+    NSString *newCodeDirPath = [projectDir stringByAppendingPathComponent:newName];
     NSString *sourceCodeDirPath = [projectDir stringByAppendingPathComponent:oldName];
     NSString *xcodeprojFilePath = [sourceCodeDirPath stringByAppendingPathExtension:@"xcodeproj"];
     NSString *xcworkspaceFilePath = [sourceCodeDirPath stringByAppendingPathExtension:@"xcworkspace"];
@@ -884,6 +917,10 @@ void modifyProjectName(NSString *projectDir, NSString *oldName, NSString *newNam
     if ([fm fileExistsAtPath:xcodeprojFilePath isDirectory:&isDirectory] && isDirectory) {
         // 替换 project.pbxproj 文件内容
         NSString *projectPbxprojFilePath = [xcodeprojFilePath stringByAppendingPathComponent:@"project.pbxproj"];
+        
+        if ([newName containsString:@"+"]) {
+            NSLog(@"%@  含有+",newName);
+        }
         if ([fm fileExistsAtPath:projectPbxprojFilePath]) {
             resetBridgingHeaderFileName(projectPbxprojFilePath, [oldName stringByAppendingString:@"-Bridging-Header"], [newName stringByAppendingString:@"-Bridging-Header"]);
             resetEntitlementsFileName(projectPbxprojFilePath, oldName, newName);
@@ -923,6 +960,7 @@ void modifyProjectName(NSString *projectDir, NSString *oldName, NSString *newNam
     if ([fm fileExistsAtPath:sourceCodeDirPath isDirectory:&isDirectory] && isDirectory) {
         renameFile(sourceCodeDirPath, [projectDir stringByAppendingPathComponent:newName]);
     }
+    project_pbxprojPath = [[newCodeDirPath stringByAppendingPathExtension:@"xcodeproj"] stringByAppendingPathComponent:@"project.pbxproj"];
 }
 
 #pragma mark - 修改类名前缀
@@ -941,7 +979,7 @@ void modifyFilesClassName(NSString *sourceCodeDir, NSString *oldClassName, NSStr
         }
         
         NSString *fileName = filePath.lastPathComponent;
-        if ([fileName hasSuffix:@".h"] || [fileName hasSuffix:@".m"] || [fileName hasSuffix:@".mm"] || [fileName hasSuffix:@".pch"] || [fileName hasSuffix:@".swift"] || [fileName hasSuffix:@".xib"] || [fileName hasSuffix:@".storyboard"]) {
+        if ([fileName hasSuffix:@".h"] || [fileName hasSuffix:@".m"] || [fileName hasSuffix:@".mm"]) {
             NSError *error = nil;
             NSMutableString *fileContent = [NSMutableString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:&error];
             if (error) {
@@ -977,11 +1015,12 @@ void replaceFileContend(NSString *sourceCodeDir,NSString *oldClassName,NSString 
         }
         NSString *fileName = filePath.lastPathComponent;
         ///mm文件先不管
-        if ([fileName hasSuffix:@".h"] || [fileName hasSuffix:@".m"] || [fileName hasSuffix:@".mm"] || [fileName hasSuffix:@".pch"] || [fileName hasSuffix:@".swift"] || [fileName hasSuffix:@".xib"] || [fileName hasSuffix:@".storyboard"]) {
+        if ([fileName hasSuffix:@".h"] || [fileName hasSuffix:@".m"] || [fileName hasSuffix:@".mm"]) {
             NSError *error = nil;
             NSMutableString *fileContent = [NSMutableString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:&error];
             if (error) {
                 printf("打开文件 %s 失败：%s\n", path.UTF8String, error.localizedDescription.UTF8String);
+                break;
                 abort();
             }
             if([fileContent containsString:oldClassName]){
@@ -1093,7 +1132,7 @@ void modifyClassNamePrefix(NSMutableString *projectContent, NSString *sourceCode
     }
 }
 
-///删除所有垃圾代码以"sp_"开头,前缀可自定义，只要不与本身方法重合就可以
+///删除所有垃圾代码以""开头,前缀可自定义，只要不与本身方法重合就可以
 void deleteAllSpamCode(NSString *sourceCodeDir,NSString *prefix){
     NSFileManager *fm = [NSFileManager defaultManager];
     
@@ -1113,7 +1152,7 @@ void deleteAllSpamCode(NSString *sourceCodeDir,NSString *prefix){
             NSMutableString *fileContent = [NSMutableString stringWithContentsOfFile:[sourceCodeDir stringByAppendingPathComponent:filePath] encoding:NSUTF8StringEncoding error:&error];
             if([fileContent containsString:prefix]){
                 ///用正则表达式匹配
-                //                    NSString *prefixString = @"sp_.*?:";
+                //                    NSString *prefixString = @".*?:";
                 //                    NSString *prefixString = @"^ie_.*(\\;|\\:|\\{)$";
                 NSString *prefixString = @"ii_.*?:";
                 NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:prefixString options:NSRegularExpressionCaseInsensitive error:&error];
