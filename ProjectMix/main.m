@@ -41,11 +41,12 @@ NSString *gSourceCodeDir = nil;
 NSInteger kLocalImageIndex = 0;
 NSInteger kSpamCount = 0;//每四个垃圾方法加参数
 NSInteger fun_probability = 1;//每多少个原函数数量，就生成多少垃圾代码
-NSInteger kPercent = 80;//百分之多少概率加密就写多少
+NSInteger kPercent = 100;//百分之多少概率加密就写多少
 NSInteger kImageCount = 0;
 NSInteger kfixImageCount = 0;
-static NSString * fun_header = @"yh_";//垃圾代码的前缀
+static NSString * fun_header = @"";//垃圾代码的前缀
 NSString *project_pbxprojPath = @"";//工程xcodeproj下pbxproj文件的路径
+NSString *newAPiPrefix = nil;
 #pragma mark - 公共方法
 
 static const NSString *kRandomAlphabet = @"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -146,23 +147,24 @@ int main(int argc, const char * argv[]) {
         NSString *oldClassNamePrefix = nil;
         NSString *newClassNamePrefix = nil;
         NSString *oldAPiPrefix = nil;
-        NSString *newAPiPrefix = nil;
+        
         
         NSFileManager *fm = [NSFileManager defaultManager];
         for (NSInteger i = 1; i < arguments.count; i++) {
             NSString *argument = arguments[i];
             if (i == 1) {
-                gSourceCodeDir = argument;
-                if (![fm fileExistsAtPath:gSourceCodeDir isDirectory:&isDirectory]) {
-                    printf("%s不存在\n", [gSourceCodeDir UTF8String]);
+                if (![fm fileExistsAtPath:argument isDirectory:&isDirectory]) {
+                    NSLog(@"%@不存在",argument);
                     return 1;
                 }
                 if (!isDirectory) {
-                    printf("%s不是目录\n", [gSourceCodeDir UTF8String]);
+                    NSLog(@"%@不是目录",argument);
                     return 1;
                 }
+                gSourceCodeDir = argument;
                 continue;
             }
+            
             ///修改图片名字
             if ([argument isEqualToString:@"-handleXcassets"]) {
                 needHandleXcassets = YES;
@@ -205,6 +207,7 @@ int main(int argc, const char * argv[]) {
                 }
                 oldClassNamePrefix = names[0];
                 newClassNamePrefix = names[1];
+                printf("oldClassNamePrefix:%s\nnewClassNamePrefix:%s",oldClassNamePrefix.UTF8String,newClassNamePrefix.UTF8String);
                 if (oldClassNamePrefix.length <= 0 || newClassNamePrefix.length <= 0) {
                     printf("修改类名前缀参数错误。参数示例：CC>DD，传入参数：%s\n", string.UTF8String);
                     return 1;
@@ -374,7 +377,7 @@ void recursiveDirectory(NSString *directory, NSArray<NSString *> *ignoreDirNames
             continue;
         }
         NSString *fileName = filePath.lastPathComponent;
-        NSLog(@"name----%@",fileName);
+//        NSLog(@"name----%@",fileName);
         if ([fileName hasSuffix:@".h"]) {
             fileName = [fileName stringByDeletingPathExtension];
             
@@ -461,14 +464,19 @@ void addSpamCodeFile(NSString *sourceCodeDir){
                 isMMfile = YES;
             }
             NSString *randomStr = @"abcdefghijklmnopqrstuvwxyz";
-            if ([fun_header isEqualToString:@"yh_"]) {
-                fun_header = @"";
+            if ([fun_header isEqualToString:@""]&&[newAPiPrefix isEqualToString:@""]) {
                 for (int i = 0; i<3; i++) {
                     fun_header = [fun_header stringByAppendingString:[randomStr substringWithRange:NSMakeRange(arc4random()%randomStr.length, 1)]];
                 }
                 fun_header = [fun_header stringByAppendingString:@"_"];
+            }else if(![newAPiPrefix isEqualToString:@""]){
+                fun_header = newAPiPrefix;
             }
             NSString *api = [NSString stringWithFormat:@"%@%@",fun_header,apiList[listIndex]];
+            if ([filePath containsString:@"bugly"]) {
+                printf("ignorefile----%s",filePath.UTF8String);
+                break;
+            }
             creatApiToFile(sourceCodeDir, api, param[paramIndex], logList[logIndex], [sourceCodeDir stringByAppendingPathComponent:filePath], YES,isMMfile);
             
             creatApiToFile(sourceCodeDir, api, param[paramIndex], logList[logIndex], filePath, NO,isMMfile);
@@ -732,7 +740,13 @@ void generateSwiftSpamCodeFile(NSString *outDirectory, NSString *swiftFilePath) 
 
 #pragma mark - 处理 Xcassets 中的图片文件
 
-void handleXcassetsFiles(NSString *directory) {
+void handleXcassetsFiles(NSString *directory) {//find %@ -iname \"*.png\"  -exec echo {} + -exec /usr/local/bin/convert {} -quality 95 {} +
+    if (gSourceCodeDir.length != 0) {
+        NSString *cmd =[NSString stringWithFormat:@"find %@ -iname \"*.png\"  -exec echo {} + -exec /usr/local/bin/convert {} {} +",gSourceCodeDir];
+        NSLog(@"\n%@",cmd);
+        NSTask *task = [NSTask launchedTaskWithLaunchPath:@"/bin/sh" arguments:@[@"-c",cmd]];
+    }
+    return;
     NSFileManager *fm = [NSFileManager defaultManager];
     NSArray<NSString *> *files = [fm contentsOfDirectoryAtPath:directory error:nil];
     BOOL isDirectory;

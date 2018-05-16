@@ -1,0 +1,1 @@
+./mix  /Users/puregold/Documents/redgold222  -modifyClassNamePrefix /Users/puregold/Documents/redgold222/Fancy3DMobile/Fancy3DMobile/SampleiOS-superAppStore.xcodeproj HZH>YS -spamCodeOut -handleXcassets -deleteComments
